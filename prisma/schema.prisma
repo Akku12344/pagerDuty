@@ -1,0 +1,238 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  TRIGGERED
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum EscalationTarget {
+  PRIMARY_ON_CALL
+  SECONDARY_ON_CALL
+  USER
+  TEAM
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id           String @id @default(uuid()) @db.Uuid
+  email        String @unique
+  name         String
+  passwordHash String
+
+  memberships           TeamMember[]
+  onCallShifts          OnCallShift[]
+  notifications         Notification[]
+  incidentEvents        IncidentEvent[]
+  acknowledgedIncidents Incident[]      @relation("IncidentAcknowledgedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Team {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+
+  members            TeamMember[]
+  services           Service[]
+  escalationPolicies EscalationPolicy[]
+  onCallSchedules    OnCallSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamMember {
+  teamId   String   @db.Uuid
+  userId   String   @db.Uuid
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+}
+
+model Service {
+  id     String @id @default(uuid()) @db.Uuid
+  name   String
+  teamId String @db.Uuid
+
+  team      Team       @relation(fields: [teamId], references: [id])
+  alerts    Alert[]
+  incidents Incident[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, name])
+}
+
+model Alert {
+  id              String   @id @default(uuid()) @db.Uuid
+  serviceId       String   @db.Uuid
+  incidentId      String   @db.Uuid
+  externalAlertId String
+  groupingKey     String
+  severity        Severity @default(MEDIUM)
+  message         String
+  source          String
+  createdAt       DateTime @default(now())
+
+  service  Service  @relation(fields: [serviceId], references: [id])
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalAlertId])
+  @@index([serviceId])
+  @@index([incidentId])
+  @@index([groupingKey])
+}
+
+model Incident {
+  id                 String @id @default(uuid()) @db.Uuid
+  serviceId          String @db.Uuid
+  escalationPolicyId String @db.Uuid
+
+  title       String
+  description String?
+  severity    Severity
+  status      IncidentStatus @default(TRIGGERED)
+
+  acknowledgedById String?   @db.Uuid
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+
+  alerts        Alert[]
+  notifications Notification[]
+  events        IncidentEvent[]
+
+  service          Service          @relation(fields: [serviceId], references: [id])
+  escalationPolicy EscalationPolicy @relation(fields: [escalationPolicyId], references: [id])
+  acknowledgedBy   User?            @relation("IncidentAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([serviceId, status])
+  @@index([escalationPolicyId])
+}
+
+model EscalationPolicy {
+  id     String @id @default(uuid()) @db.Uuid
+  name   String
+  teamId String @db.Uuid
+
+  team      Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  steps     EscalationStep[]
+  incidents Incident[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EscalationStep {
+  id                 String           @id @default(uuid()) @db.Uuid
+  escalationPolicyId String           @db.Uuid
+  stepNumber         Int
+  targetType         EscalationTarget
+  targetId           String?          @db.Uuid
+  delayMinutes       Int
+
+  escalationPolicy EscalationPolicy @relation(fields: [escalationPolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([escalationPolicyId, stepNumber])
+}
+
+model OnCallSchedule {
+  id     String @id @default(uuid()) @db.Uuid
+  name   String
+  teamId String @db.Uuid
+
+  team   Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  shifts OnCallShift[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OnCallShift {
+  id         String   @id @default(uuid()) @db.Uuid
+  scheduleId String   @db.Uuid
+  userId     String   @db.Uuid
+  startTime  DateTime
+  endTime    DateTime
+
+  schedule OnCallSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id])
+
+  @@index([scheduleId, startTime, endTime])
+}
+
+model Notification {
+  id         String              @id @default(uuid()) @db.Uuid
+  incidentId String              @db.Uuid
+  userId     String              @db.Uuid
+  channel    NotificationChannel
+  status     NotificationStatus  @default(PENDING)
+  attempts   Int                 @default(0)
+  sentAt     DateTime?
+  lastError  String?
+  createdAt  DateTime            @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([incidentId])
+  @@index([userId, status])
+}
+
+model IncidentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  incidentId String   @db.Uuid
+  actorId    String?  @db.Uuid
+  eventType  String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, createdAt])
+}
