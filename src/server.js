@@ -7,6 +7,8 @@ import cookieParser from "cookie-parser";
 import { connectDB } from "./config/db.js";
 import { notFound } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import authrouter from "./router/user.router.js";
+import teamrouter from "./router/team.router.js";
 
 const app = express();
 
@@ -34,9 +36,8 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
-// app.use("/api/v1/auth", authrouter);
-// app.use("/api/v1/workspace", workspacerouter);
-// app.use("/api/v1/incident", incidentrouter);
+app.use("/api/v1/auth", authrouter);
+app.use("/api/v1/team", teamrouter);
 
 // app.use(errorMiddleware);
 

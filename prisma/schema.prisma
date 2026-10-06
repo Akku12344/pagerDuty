@@ -59,6 +59,7 @@ model User {
   onCallShifts          OnCallShift[]
   notifications         Notification[]
   incidentEvents        IncidentEvent[]
+  auditLogs             AuditLog[]
   acknowledgedIncidents Incident[]      @relation("IncidentAcknowledgedBy")
 
   createdAt DateTime @default(now())
@@ -235,4 +236,19 @@ model IncidentEvent {
   actor    User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([incidentId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String   @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
 }
